@@ -88,80 +88,207 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-  <h1>予約フォーム 2</h1>
+  <h1>予約フォーム</h1>
 
-  <div id="userInfo" style="margin-bottom: 16px;"></div>
+  <div id="userInfo"></div>
 
   <form id="reserveForm">
-    <div>
-      <label for="date">日付</label>
-      <input type="date" id="date" name="date" required>
-    </div>
+    <label for="date">日付</label>
+    <input type="date" id="date" name="date" required>
 
-    <div>
-      <label for="time">時間</label>
-      <select id="time" name="time" required>
-        <option value="">選択してください</option>
-        <option value="10:00">10:00</option>
-        <option value="11:00">11:00</option>
-        <option value="13:00">13:00</option>
-        <option value="14:00">14:00</option>
-      </select>
-    </div>
+    <label for="time">時間</label>
+    <select id="time" name="time" required>
+      <option value="">日付を選択してください</option>
+    </select>
 
-    <div>
-      <label for="note">備考</label>
-      <textarea id="note" name="note"></textarea>
-    </div>
+    <label for="note">備考</label>
+    <textarea id="note" name="note" rows="4"></textarea>
 
     <button type="submit">予約する</button>
   </form>
 
-  <div id="message" style="margin-top: 16px;"></div>
+  <div id="message" class="msg"></div>
 
-  <script>
+<script>
     const LIFF_ID = '2009547355-6bGGAu4O';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzqi98cQ9NATiWmSq6nO_f1Sx3Zv5VwshnB5wIvMTeYxkPp7pw3_IjRG4_vskSfoEtN/exec';
+  
 
-    let profile = null;
+  let profile = null;
 
-    async function initializeLiff() {
-      try {
-        await liff.init({ liffId: LIFF_ID });
+  // 予約可能な全時間帯
+  const ALL_TIME_SLOTS = [
+    '10:00',
+    '11:00',
+    '13:00',
+    '14:00'
+  ];
 
-        // LINE内ブラウザ以外も考慮してログイン
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
+  async function initializeLiff() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
 
-        profile = await liff.getProfile();
-
-        document.getElementById('userInfo').innerHTML = `
-          <p>LINEユーザー: ${escapeHtml(profile.displayName)}</p>
-        `;
-      } catch (error) {
-        console.error('LIFF初期化エラー:', error);
-        document.getElementById('message').textContent =
-          'LIFFの初期化に失敗しました。';
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
       }
+
+      profile = await liff.getProfile();
+
+      const userInfoEl = document.getElementById('userInfo');
+      if (userInfoEl) {
+        userInfoEl.textContent = `LINEユーザー: ${profile.displayName}`;
+      }
+
+      // 初期状態の時間選択肢
+      resetTimeOptions();
+
+      // もし日付に初期値があれば、その日の空き状況を取得
+      const dateEl = document.getElementById('date');
+      if (dateEl.value) {
+        await fetchReservedTimes(dateEl.value);
+      }
+
+    } catch (error) {
+      console.error('LIFF初期化エラー:', error);
+      showMessage('LIFFの初期化に失敗しました。');
+    }
+  }
+
+  function resetTimeOptions() {
+    const timeEl = document.getElementById('time');
+    timeEl.innerHTML = '<option value="">日付を選択してください</option>';
+  }
+
+  function showMessage(message) {
+    const messageEl = document.getElementById('message');
+    if (messageEl) {
+      messageEl.textContent = message;
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function fetchReservedTimes(date) {
+    const timeEl = document.getElementById('time');
+
+    if (!date) {
+      resetTimeOptions();
+      return;
     }
 
+    timeEl.innerHTML = '<option value="">読み込み中...</option>';
+
+    try {
+      const url = `${GAS_URL}?action=getReservedTimes&date=${encodeURIComponent(date)}`;
+      const response = await fetch(url, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+
+      if (!data.ok) {
+        resetTimeOptions();
+        showMessage(data.message || '空き時間の取得に失敗しました。');
+        return;
+      }
+
+      updateTimeOptions(data.reservedTimes || []);
+      showMessage('');
+
+    } catch (error) {
+      console.error('空き時間取得エラー:', error);
+      resetTimeOptions();
+      showMessage('空き時間の取得中にエラーが発生しました。');
+    }
+  }
+
+  function updateTimeOptions(reservedTimes) {
+    const timeEl = document.getElementById('time');
+
+    // 予約済み時間を正規化
+    const reservedSet = new Set(
+      reservedTimes.map(normalizeTimeString)
+    );
+
+    timeEl.innerHTML = '';
+
+    // 先頭の案内
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = '時間を選択してください';
+    timeEl.appendChild(defaultOption);
+
+    let availableCount = 0;
+
+    ALL_TIME_SLOTS.forEach((time) => {
+      const option = document.createElement('option');
+      option.value = time;
+
+      if (reservedSet.has(normalizeTimeString(time))) {
+        option.textContent = `${time}（予約済み）`;
+        option.disabled = true;
+      } else {
+        option.textContent = time;
+        availableCount++;
+      }
+
+      timeEl.appendChild(option);
+    });
+
+    if (availableCount === 0) {
+      timeEl.innerHTML = '';
+      const noSlotOption = document.createElement('option');
+      noSlotOption.value = '';
+      noSlotOption.textContent = '空き時間がありません';
+      timeEl.appendChild(noSlotOption);
+    }
+  }
+
+  function normalizeTimeString(value) {
+    const v = String(value).trim();
+    const match = v.match(/^(\d{1,2}):(\d{2})/);
+
+    if (match) {
+      return `${match[1].padStart(2, '0')}:${match[2]}`;
+    }
+
+    return v;
+  }
+
+  // 日付変更時に予約済み時間を取得
+  document.getElementById('date').addEventListener('change', async (event) => {
+    const date = event.target.value;
+    await fetchReservedTimes(date);
+  });
+
+  // フォーム送信
   document.getElementById('reserveForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-  
+
     const date = document.getElementById('date').value;
     const time = document.getElementById('time').value;
     const note = document.getElementById('note').value;
-    const messageEl = document.getElementById('message');
-  
-    messageEl.textContent = '送信中です...';
-  
+
     if (!profile) {
-      messageEl.textContent = 'LINEユーザー情報の取得に失敗しています。';
+      showMessage('LINEユーザー情報の取得に失敗しています。');
       return;
     }
-  
+
+    if (!date || !time) {
+      showMessage('日付と時間を選択してください。');
+      return;
+    }
+
+    showMessage('送信中です...');
+
     try {
       const body = new URLSearchParams({
         lineUserId: profile.userId,
@@ -170,39 +297,37 @@
         time,
         note
       });
-  
+
       const response = await fetch(GAS_URL, {
         method: 'POST',
         body
       });
-  
+
       const result = await response.json();
-  
+
       if (result.ok) {
-        messageEl.textContent = result.message;
-  
-        // 必要ならフォーム初期化
-        document.getElementById('reserveForm').reset();
+        showMessage(result.message || '予約が完了しました。');
+
+        // 送信後に最新の空き状況へ更新
+        await fetchReservedTimes(date);
+
+        // 備考だけ消したい場合
+        document.getElementById('note').value = '';
+        document.getElementById('time').value = '';
       } else {
-        messageEl.textContent = result.message || '予約に失敗しました。';
+        showMessage(result.message || '予約に失敗しました。');
+
+        // 失敗時も念のため最新状態を取り直す
+        await fetchReservedTimes(date);
       }
-  
+
     } catch (error) {
       console.error('送信エラー:', error);
-      messageEl.textContent = '送信中にエラーが発生しました。';
+      showMessage('送信中にエラーが発生しました。');
     }
   });
 
-    function escapeHtml(str) {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    initializeLiff();
-  </script>
+  initializeLiff();
+</script>
 </body>
 </html>
