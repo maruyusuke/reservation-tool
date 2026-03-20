@@ -63,84 +63,82 @@
   <div class="msg" id="msg"></div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script>
-    const LIFF_ID = '2009547355-6bGGAu4O';
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzqi98cQ9NATiWmSq6nO_f1Sx3Zv5VwshnB5wIvMTeYxkPp7pw3_IjRG4_vskSfoEtN/exec';
+    
+<script>
+  const LIFF_ID = '2009547355-6bGGAu4O';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzqi98cQ9NATiWmSq6nO_f1Sx3Zv5VwshnB5wIvMTeYxkPp7pw3_IjRG4_vskSfoEtN/exec';
 
-    async function initLiff() {
-      try {
-        await liff.init({ liffId: LIFF_ID });
-        document.getElementById('msg').textContent = 'LIFFの初期化が完了しました。';
-      } catch (e) {
-        document.getElementById('msg').textContent = 'LIFF初期化エラー: ' + e.message;
-      }
+  async function initLiff() {
+    alert('version: 2026-03-20-2020');
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      document.getElementById('msg').textContent = 'LIFFの初期化が完了しました。';
+    } catch (e) {
+      alert('init error: ' + e.message);
+    }
+  }
+
+  async function submitReservation() {
+    const date = document.getElementById('date').value;
+    const time = document.getElementById('time').value;
+    const note = document.getElementById('note').value;
+
+    if (!date || !time) {
+      alert('日付と時間を選択してください。');
+      return;
     }
 
-    async function submitReservation() {
-      const date = document.getElementById('date').value;
-      const time = document.getElementById('time').value;
-      const note = document.getElementById('note').value;
-
-      if (!date || !time) {
-        alert('日付と時間を選択してください。');
-        return;
-      }
+    try {
+      let lineUserId = '';
+      let displayName = '';
 
       try {
         const profile = await liff.getProfile();
-
-        const payload = {
-          lineUserId: profile.userId,
-          displayName: profile.displayName,
-          date,
-          time,
-          note
-        };
-
-        if (GAS_URL.includes('ここに後で')) {
-          alert('まずは画面表示確認段階です。次にGAS URLを設定します。\\n\\n' + JSON.stringify(payload, null, 2));
-          return;
-        }
-
-        try {
-          const res = await fetch(GAS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            redirect: 'follow'
-          });
-        
-          alert('status=' + res.status);
-          const text = await res.text();
-          alert(text);
-        } catch (e) {
-          alert('fetch失敗: ' + e.message);
-        }
-
-        const res = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const json = await res.json();
-
-        if (json.ok) {
-          alert('予約を受け付けました。');
-          if (liff.isInClient()) {
-            liff.closeWindow();
-          }
-        } else {
-          alert('送信に失敗しました。');
-        }
-      } catch (e) {
-        alert('エラー: ' + e.message);
+        lineUserId = profile.userId || '';
+        displayName = profile.displayName || '';
+      } catch (profileErr) {
+        console.log('profile取得失敗:', profileErr);
       }
+
+      const body = new URLSearchParams({
+        lineUserId,
+        displayName,
+        date,
+        time,
+        note
+      });
+
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        body
+      });
+
+      const text = await res.text();
+      alert('response=' + text);
+
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        throw new Error('JSON解析失敗: ' + text);
+      }
+
+      if (json.ok) {
+        alert('予約を受け付けました。');
+        if (liff.isInClient()) {
+          liff.closeWindow();
+        }
+      } else {
+        throw new Error(json.error || '送信に失敗しました');
+      }
+
+    } catch (e) {
+      alert('送信エラー: ' + e.message);
     }
+  }
 
-    document.getElementById('submitBtn').addEventListener('click', submitReservation);
-
-    initLiff();
-  </script>
+  document.getElementById('submitBtn').addEventListener('click', submitReservation);
+  initLiff();
+</script>
 </body>
 </html>
