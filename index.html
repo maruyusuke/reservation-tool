@@ -81,6 +81,37 @@
     margin-top: 16px;
     font-size: 14px;
   }
+  .msg {
+    margin-top: 16px;
+    font-size: 14px;
+    padding: 12px;
+    border-radius: 8px;
+    display: none;
+  }
+
+  .msg.show {
+    display: block;
+  }
+
+  .msg.info {
+    background: #e3f2fd;
+    color: #1565c0;
+  }
+
+  .msg.success {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  .msg.error {
+    background: #ffebee;
+    color: #c62828;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 </style>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -104,25 +135,19 @@
     <label for="note">備考</label>
     <textarea id="note" name="note" rows="4"></textarea>
 
-    <button type="submit">予約する</button>
+    <button type="submit" id="submitButton">予約する</button>
+    <div id="message" class="msg"></div>
   </form>
 
-  <div id="message" class="msg"></div>
+
 
 <script>
     const LIFF_ID = '2009547355-6bGGAu4O';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzqi98cQ9NATiWmSq6nO_f1Sx3Zv5VwshnB5wIvMTeYxkPp7pw3_IjRG4_vskSfoEtN/exec';
-  
 
   let profile = null;
 
-  // 予約可能な全時間帯
-  const ALL_TIME_SLOTS = [
-    '10:00',
-    '11:00',
-    '13:00',
-    '14:00'
-  ];
+  const ALL_TIME_SLOTS = ['10:00', '11:00', '13:00', '14:00'];
 
   async function initializeLiff() {
     try {
@@ -137,13 +162,11 @@
 
       const userInfoEl = document.getElementById('userInfo');
       if (userInfoEl) {
-        userInfoEl.textContent = `${profile.displayName} 様`;
+        userInfoEl.textContent = `LINEユーザー: ${profile.displayName}`;
       }
 
-      // 初期状態の時間選択肢
       resetTimeOptions();
 
-      // もし日付に初期値があれば、その日の空き状況を取得
       const dateEl = document.getElementById('date');
       if (dateEl.value) {
         await fetchReservedTimes(dateEl.value);
@@ -151,29 +174,34 @@
 
     } catch (error) {
       console.error('LIFF初期化エラー:', error);
-      showMessage('LIFFの初期化に失敗しました。');
+      showMessage('LIFFの初期化に失敗しました。', 'error');
     }
+  }
+
+  function showMessage(message, type = 'info') {
+    const messageEl = document.getElementById('message');
+    messageEl.textContent = message;
+    messageEl.className = `msg show ${type}`;
+  }
+
+  function clearMessage() {
+    const messageEl = document.getElementById('message');
+    messageEl.textContent = '';
+    messageEl.className = 'msg';
+  }
+
+  function setSubmitting(isSubmitting) {
+    const submitButton = document.getElementById('submitButton');
+
+    if (!submitButton) return;
+
+    submitButton.disabled = isSubmitting;
+    submitButton.textContent = isSubmitting ? '送信中...' : '予約する';
   }
 
   function resetTimeOptions() {
     const timeEl = document.getElementById('time');
     timeEl.innerHTML = '<option value="">日付を選択してください</option>';
-  }
-
-  function showMessage(message) {
-    const messageEl = document.getElementById('message');
-    if (messageEl) {
-      messageEl.textContent = message;
-    }
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 
   async function fetchReservedTimes(date) {
@@ -188,39 +216,31 @@
 
     try {
       const url = `${GAS_URL}?action=getReservedTimes&date=${encodeURIComponent(date)}`;
-      const response = await fetch(url, {
-        method: 'GET'
-      });
-
+      const response = await fetch(url, { method: 'GET' });
       const data = await response.json();
 
       if (!data.ok) {
         resetTimeOptions();
-        showMessage(data.message || '空き時間の取得に失敗しました。');
+        showMessage(data.message || '空き時間の取得に失敗しました。', 'error');
         return;
       }
 
       updateTimeOptions(data.reservedTimes || []);
-      showMessage('');
+      clearMessage();
 
     } catch (error) {
       console.error('空き時間取得エラー:', error);
       resetTimeOptions();
-      showMessage('空き時間の取得中にエラーが発生しました。');
+      showMessage('空き時間の取得中にエラーが発生しました。', 'error');
     }
   }
 
   function updateTimeOptions(reservedTimes) {
     const timeEl = document.getElementById('time');
-
-    // 予約済み時間を正規化
-    const reservedSet = new Set(
-      reservedTimes.map(normalizeTimeString)
-    );
+    const reservedSet = new Set(reservedTimes.map(normalizeTimeString));
 
     timeEl.innerHTML = '';
 
-    // 先頭の案内
     const defaultOption = document.createElement('option');
     defaultOption.value = '';
     defaultOption.textContent = '時間を選択してください';
@@ -263,13 +283,11 @@
     return v;
   }
 
-  // 日付変更時に予約済み時間を取得
   document.getElementById('date').addEventListener('change', async (event) => {
     const date = event.target.value;
     await fetchReservedTimes(date);
   });
 
-  // フォーム送信
   document.getElementById('reserveForm').addEventListener('submit', async (event) => {
     event.preventDefault();
 
@@ -278,16 +296,17 @@
     const note = document.getElementById('note').value;
 
     if (!profile) {
-      showMessage('LINEユーザー情報の取得に失敗しています。');
+      showMessage('LINEユーザー情報の取得に失敗しています。', 'error');
       return;
     }
 
     if (!date || !time) {
-      showMessage('日付と時間を選択してください。');
+      showMessage('日付と時間を選択してください。', 'error');
       return;
     }
 
-    showMessage('送信中です...');
+    setSubmitting(true);
+    showMessage('送信中です...', 'info');
 
     try {
       const body = new URLSearchParams({
@@ -306,28 +325,33 @@
       const result = await response.json();
 
       if (result.ok) {
-        showMessage(result.message || '予約が完了しました。');
+        showMessage(result.message || '予約が完了しました。', 'success');
 
-        // 送信後に最新の空き状況へ更新
         await fetchReservedTimes(date);
 
-        // 備考だけ消したい場合
         document.getElementById('note').value = '';
         document.getElementById('time').value = '';
-      } else {
-        showMessage(result.message || '予約に失敗しました。');
 
-        // 失敗時も念のため最新状態を取り直す
+        setTimeout(() => {
+          if (typeof liff !== 'undefined' && liff.isInClient()) {
+            liff.closeWindow();
+          }
+        }, 1500);
+
+      } else {
+        showMessage(result.message || '予約に失敗しました。', 'error');
         await fetchReservedTimes(date);
       }
 
     } catch (error) {
       console.error('送信エラー:', error);
-      showMessage('送信中にエラーが発生しました。');
+      showMessage('送信中にエラーが発生しました。', 'error');
+    } finally {
+      setSubmitting(false);
     }
   });
 
   initializeLiff();
-</script>
+</script> 
 </body>
 </html>
