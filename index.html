@@ -99,48 +99,51 @@
       }
     }
 
-    document.getElementById('reserveForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      const date = document.getElementById('date').value;
-      const time = document.getElementById('time').value;
-      const note = document.getElementById('note').value;
-
-      if (!profile) {
-        document.getElementById('message').textContent =
-          'LINEユーザー情報の取得に失敗しています。';
-        return;
+  document.getElementById('reserveForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+  
+    const date = document.getElementById('date').value;
+    const time = document.getElementById('time').value;
+    const note = document.getElementById('note').value;
+    const messageEl = document.getElementById('message');
+  
+    messageEl.textContent = '送信中です...';
+  
+    if (!profile) {
+      messageEl.textContent = 'LINEユーザー情報の取得に失敗しています。';
+      return;
+    }
+  
+    try {
+      const body = new URLSearchParams({
+        lineUserId: profile.userId,
+        displayName: profile.displayName,
+        date,
+        time,
+        note
+      });
+  
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        body
+      });
+  
+      const result = await response.json();
+  
+      if (result.ok) {
+        messageEl.textContent = result.message;
+  
+        // 必要ならフォーム初期化
+        document.getElementById('reserveForm').reset();
+      } else {
+        messageEl.textContent = result.message || '予約に失敗しました。';
       }
-
-      try {
-        const body = new URLSearchParams({
-          lineUserId: profile.userId,
-          displayName: profile.displayName,
-          date,
-          time,
-          note
-        });
-
-        const response = await fetch(GAS_URL, {
-          method: 'POST',
-          body
-        });
-
-        const result = await response.json();
-
-        if (result.ok) {
-          document.getElementById('message').textContent =
-            '予約が完了しました。';
-        } else {
-          document.getElementById('message').textContent =
-            result.message || '予約に失敗しました。';
-        }
-      } catch (error) {
-        console.error('送信エラー:', error);
-        document.getElementById('message').textContent =
-          '送信中にエラーが発生しました。';
-      }
-    });
+  
+    } catch (error) {
+      console.error('送信エラー:', error);
+      messageEl.textContent = '送信中にエラーが発生しました。';
+    }
+  });
 
     function escapeHtml(str) {
       return str
